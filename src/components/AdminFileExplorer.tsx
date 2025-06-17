@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,7 +18,8 @@ import {
   Image,
   FileSpreadsheet,
   Presentation,
-  Archive
+  Archive,
+  Eye
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -28,6 +28,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
+import FilePreview from './FilePreview';
 
 interface FolderData {
   id: string;
@@ -61,6 +62,7 @@ const AdminFileExplorer = () => {
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderDescription, setNewFolderDescription] = useState('');
   const [dragActive, setDragActive] = useState(false);
+  const [previewFile, setPreviewFile] = useState<FileData | null>(null);
 
   // Fetch folders
   const { data: folders = [] } = useQuery({
@@ -235,6 +237,26 @@ const AdminFileExplorer = () => {
     } catch (error) {
       toast.error('Failed to download file');
     }
+  };
+
+  const canPreview = (mimeType: string | null) => {
+    if (!mimeType) return false;
+    
+    return (
+      mimeType.startsWith('image/') ||
+      mimeType.startsWith('video/') ||
+      mimeType.startsWith('audio/') ||
+      mimeType === 'application/pdf' ||
+      mimeType.startsWith('text/') ||
+      mimeType.includes('word') ||
+      mimeType.includes('excel') ||
+      mimeType.includes('sheet') ||
+      mimeType.includes('presentation') ||
+      mimeType.includes('powerpoint') ||
+      mimeType === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      mimeType === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' ||
+      mimeType === 'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+    );
   };
 
   const filteredFolders = folders.filter(folder =>
@@ -434,6 +456,15 @@ const AdminFileExplorer = () => {
                     </p>
                   </div>
                   <div className="flex gap-1">
+                    {canPreview(file.mime_type) && (
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setPreviewFile(file)}
+                      >
+                        <Eye className="w-4 h-4" />
+                      </Button>
+                    )}
                     <Button
                       variant="ghost"
                       size="sm"
@@ -489,6 +520,12 @@ const AdminFileExplorer = () => {
             </DialogContent>
           </Dialog>
         )}
+
+        <FilePreview
+          file={previewFile}
+          isOpen={!!previewFile}
+          onClose={() => setPreviewFile(null)}
+        />
       </div>
     </div>
   );
