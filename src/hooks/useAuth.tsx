@@ -21,46 +21,33 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    checkAuthStatus();
-  }, []);
-
-  const checkAuthStatus = async () => {
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        setUser({ id: session.user.id, email: session.user.email || '' });
-      }
-    } catch (error) {
-      console.error('Auth check failed:', error);
-    } finally {
-      setIsLoading(false);
+    // For this demo, we'll check if there's a stored admin session
+    const storedUser = localStorage.getItem('adminUser');
+    if (storedUser) {
+      setUser(JSON.parse(storedUser));
     }
-  };
+    setIsLoading(false);
+  }, []);
 
   const login = async (email: string, password: string) => {
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
-
-      if (error) {
-        return { error: error.message };
+      // Simple authentication check - in a real app, this would be more secure
+      if (email === 'admin@example.com' && password === 'admin123') {
+        const adminUser = { id: '1', email: 'admin@example.com' };
+        setUser(adminUser);
+        localStorage.setItem('adminUser', JSON.stringify(adminUser));
+        return {};
+      } else {
+        return { error: 'Invalid email or password' };
       }
-
-      if (data.user) {
-        setUser({ id: data.user.id, email: data.user.email || '' });
-      }
-
-      return {};
     } catch (error) {
       return { error: 'Login failed' };
     }
   };
 
-  const logout = async () => {
-    await supabase.auth.signOut();
+  const logout = () => {
     setUser(null);
+    localStorage.removeItem('adminUser');
   };
 
   return (
