@@ -29,7 +29,7 @@ import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from 'sonner';
 
-interface Folder {
+interface FolderData {
   id: string;
   name: string;
   description: string | null;
@@ -37,7 +37,7 @@ interface Folder {
   created_at: string;
 }
 
-interface File {
+interface FileData {
   id: string;
   name: string;
   description: string | null;
@@ -73,7 +73,7 @@ const AdminFileExplorer = () => {
         .order(sortBy === 'name' ? 'name' : 'created_at', { ascending: sortOrder === 'asc' });
       
       if (error) throw error;
-      return data as Folder[];
+      return data as FolderData[];
     }
   });
 
@@ -88,7 +88,7 @@ const AdminFileExplorer = () => {
         .order(sortBy === 'name' ? 'name' : 'created_at', { ascending: sortOrder === 'asc' });
       
       if (error) throw error;
-      return data as File[];
+      return data as FileData[];
     }
   });
 
@@ -117,7 +117,7 @@ const AdminFileExplorer = () => {
 
   // Upload file mutation
   const uploadFileMutation = useMutation({
-    mutationFn: async (file: File) => {
+    mutationFn: async (file: globalThis.File) => {
       const fileName = `${Date.now()}-${file.name}`;
       const filePath = currentFolderId ? `${currentFolderId}/${fileName}` : fileName;
 
@@ -216,7 +216,7 @@ const AdminFileExplorer = () => {
     setDragActive(false);
   };
 
-  const downloadFile = async (file: File) => {
+  const downloadFile = async (file: FileData) => {
     try {
       const { data, error } = await supabase.storage
         .from('file-explorer')
