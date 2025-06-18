@@ -19,7 +19,9 @@ import {
   FileSpreadsheet,
   Presentation,
   Archive,
-  Eye
+  Eye,
+  Trash,
+  ArrowLeft
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -102,6 +104,39 @@ const AdminFileExplorer = () => {
   const [newFolderDescription, setNewFolderDescription] = useState('');
   const [dragActive, setDragActive] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileData | null>(null);
+  const [folderPath, setFolderPath] = useState<FolderData[]>([]);
+
+  // Build folder path for navigation
+  useEffect(() => {
+    const buildFolderPath = async () => {
+      if (!currentFolderId) {
+        setFolderPath([]);
+        return;
+      }
+
+      const path: FolderData[] = [];
+      let folderId = currentFolderId;
+
+      while (folderId) {
+        const { data: folder } = await supabase
+          .from('folders')
+          .select('*')
+          .eq('id', folderId)
+          .single();
+
+        if (folder) {
+          path.unshift(folder);
+          folderId = folder.parent_id;
+        } else {
+          break;
+        }
+      }
+
+      setFolderPath(path);
+    };
+
+    buildFolderPath();
+  }, [currentFolderId]);
 
   // Fetch folders - fix UUID null handling
   const { data: folders = [] } = useQuery({
@@ -269,6 +304,92 @@ const AdminFileExplorer = () => {
     }
   });
 
+  // Delete folder mutation
+  const deleteFolderMutation = useMutation({
+    mutationFn: async (folderId: string) => {
+      const { error } = await supabase
+        .from('folders')
+        .delete()
+        .eq('id', folderId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      toast.success('Folder deleted successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to delete folder: ' + error.message);
+    }
+  });
+
+  // Delete file mutation
+  const deleteFileMutation = useMutation({
+    mutationFn: async (file: FileData) => {
+      // Delete from storage first
+      const { error: storageError } = await supabase.storage
+        .from('file-explorer')
+        .remove([file.file_path]);
+
+      if (storageError) throw storageError;
+
+      // Delete from database
+      const { error } = await supabase
+        .from('files')
+        .delete()
+        .eq('id', file.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      toast.success('File deleted successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to delete file: ' + error.message);
+    }
+  });
+
+  // Edit folder mutation
+  const editFolderMutation = useMutation({
+    mutationFn: async ({ id, name, description }: { id: string; name: string; description: string }) => {
+      const { error } = await supabase
+        .from('folders')
+        .update({ name, description: description || null })
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['folders'] });
+      setEditingItem(null);
+      toast.success('Folder updated successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to update folder: ' + error.message);
+    }
+  });
+
+  // Edit file mutation
+  const editFileMutation = useMutation({
+    mutationFn: async ({ id, name, description }: { id: string; name: string; description: string }) => {
+      const { error } = await supabase
+        .from('files')
+        .update({ name, description: description || null })
+        .eq('id', id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      setEditingItem(null);
+      toast.success('File updated successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to update file: ' + error.message);
+    }
+  });
+
   const getFileIcon = (mimeType: string | null, fileType: string) => {
     if (!mimeType) return <File className="w-12 h-12 text-gray-400" />;
     
@@ -402,6 +523,51 @@ const AdminFileExplorer = () => {
           </div>
         </div>
 
+        {/* Breadcrumb Navigation */}
+        {folderPath.length > 0 && (
+          <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setCurrentFolderId(null)}
+              className="text-blue-500 hover:text-blue-600"
+            >
+              <ArrowLeft className="w-4 h-4 mr-1" />
+              Root
+            </Button>
+            {folderPath.map((folder, index) => (
+              <div key={folder.id} className="flex items-center gap-2">
+                <span>/</span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setCurrentFolderId(folder.id)}
+                  className={index === folderPath.length - 1 ? "text-foreground font-medium" : "text-blue-500 hover:text-blue-600"}
+                >
+                  {folder.name}
+                </Button>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Back button for root level */}
+        {currentFolderId && (
+          <div className="mb-4">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                const parentId = folderPath.length > 1 ? folderPath[folderPath.length - 2].id : null;
+                setCurrentFolderId(parentId);
+              }}
+            >
+              <ArrowLeft className="w-4 h-4 mr-2" />
+              Back
+            </Button>
+          </div>
+        )}
+
         {/* Search and Controls */}
         <div className="flex items-center gap-4 mb-6">
           <div className="relative flex-1">
@@ -493,7 +659,10 @@ const AdminFileExplorer = () => {
             <div className="text-center">
               <Upload className="w-12 h-12 text-muted-foreground mx-auto mb-4" />
               <p className="text-lg font-medium mb-2">Drag and drop files here</p>
-              <p className="text-muted-foreground">or use the upload button above</p>
+              <p className="text-muted-foreground">
+                or use the upload button above
+                {currentFolderId && ` (files will be uploaded to this folder)`}
+              </p>
             </div>
           </div>
         )}
@@ -520,16 +689,30 @@ const AdminFileExplorer = () => {
                     )}
                   </div>
                   {user && (
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setEditingItem({ type: 'folder', id: folder.id, name: folder.name, description: folder.description || '' });
-                      }}
-                    >
-                      <Edit3 className="w-4 h-4" />
-                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingItem({ type: 'folder', id: folder.id, name: folder.name, description: folder.description || '' });
+                        }}
+                      >
+                        <Edit3 className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (confirm('Are you sure you want to delete this folder? This will also delete all files and subfolders inside it.')) {
+                            deleteFolderMutation.mutate(folder.id);
+                          }
+                        }}
+                      >
+                        <Trash className="w-4 h-4 text-red-500" />
+                      </Button>
+                    </div>
                   )}
                 </div>
               </CardContent>
@@ -571,13 +754,26 @@ const AdminFileExplorer = () => {
                       <Download className="w-4 h-4" />
                     </Button>
                     {user && (
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setEditingItem({ type: 'file', id: file.id, name: file.name, description: file.description || '' })}
-                      >
-                        <Edit3 className="w-4 h-4" />
-                      </Button>
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setEditingItem({ type: 'file', id: file.id, name: file.name, description: file.description || '' })}
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            if (confirm('Are you sure you want to delete this file?')) {
+                              deleteFileMutation.mutate(file);
+                            }
+                          }}
+                        >
+                          <Trash className="w-4 h-4 text-red-500" />
+                        </Button>
+                      </>
                     )}
                   </div>
                 </div>
@@ -586,14 +782,23 @@ const AdminFileExplorer = () => {
           ))}
         </div>
 
-        {/* Edit Description Dialog */}
+        {/* Edit Dialog */}
         {editingItem && (
           <Dialog open={!!editingItem} onOpenChange={() => setEditingItem(null)}>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Edit Description - {editingItem.name}</DialogTitle>
+                <DialogTitle>Edit {editingItem.type === 'folder' ? 'Folder' : 'File'}</DialogTitle>
               </DialogHeader>
               <div className="space-y-4">
+                <div>
+                  <Label htmlFor="edit-name">Name</Label>
+                  <Input
+                    id="edit-name"
+                    value={editingItem.name}
+                    onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
+                    placeholder="Enter name"
+                  />
+                </div>
                 <div>
                   <Label htmlFor="edit-description">Description</Label>
                   <Textarea
@@ -604,15 +809,25 @@ const AdminFileExplorer = () => {
                   />
                 </div>
                 <Button
-                  onClick={() => updateDescriptionMutation.mutate({ 
-                    type: editingItem.type, 
-                    id: editingItem.id, 
-                    description: editingItem.description 
-                  })}
-                  disabled={updateDescriptionMutation.isPending}
+                  onClick={() => {
+                    if (editingItem.type === 'folder') {
+                      editFolderMutation.mutate({
+                        id: editingItem.id,
+                        name: editingItem.name,
+                        description: editingItem.description
+                      });
+                    } else {
+                      editFileMutation.mutate({
+                        id: editingItem.id,
+                        name: editingItem.name,
+                        description: editingItem.description
+                      });
+                    }
+                  }}
+                  disabled={editFolderMutation.isPending || editFileMutation.isPending}
                   className="w-full"
                 >
-                  Update Description
+                  Update {editingItem.type === 'folder' ? 'Folder' : 'File'}
                 </Button>
               </div>
             </DialogContent>
