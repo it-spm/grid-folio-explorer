@@ -103,46 +103,79 @@ const AdminFileExplorer = () => {
   const [dragActive, setDragActive] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileData | null>(null);
 
-  // Fetch folders
+  // Fetch folders - fix UUID null handling
   const { data: folders = [] } = useQuery({
     queryKey: ['folders', currentFolderId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('folders')
         .select('*')
-        .eq('parent_id', currentFolderId)
         .order(sortBy === 'name' ? 'name' : 'created_at', { ascending: sortOrder === 'asc' });
+
+      // Properly handle null vs string for parent_id
+      if (currentFolderId === null) {
+        query = query.is('parent_id', null);
+      } else {
+        query = query.eq('parent_id', currentFolderId);
+      }
       
-      if (error) throw error;
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Error fetching folders:', error);
+        throw error;
+      }
       return data as FolderData[];
     }
   });
 
-  // Fetch files
+  // Fetch files - fix UUID null handling
   const { data: files = [] } = useQuery({
     queryKey: ['files', currentFolderId],
     queryFn: async () => {
-      const { data, error } = await supabase
+      let query = supabase
         .from('files')
         .select('*')
-        .eq('folder_id', currentFolderId)
         .order(sortBy === 'name' ? 'name' : 'created_at', { ascending: sortOrder === 'asc' });
+
+      // Properly handle null vs string for folder_id
+      if (currentFolderId === null) {
+        query = query.is('folder_id', null);
+      } else {
+        query = query.eq('folder_id', currentFolderId);
+      }
       
-      if (error) throw error;
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('Error fetching files:', error);
+        throw error;
+      }
       return data as FileData[];
     }
   });
 
-  // Create folder mutation
+  // Create folder mutation - fix UUID null handling
   const createFolderMutation = useMutation({
     mutationFn: async ({ name, description }: { name: string; description: string }) => {
+      console.log('Creating folder:', name, 'with parent_id:', currentFolderId);
+      
       const { data, error } = await supabase
         .from('folders')
-        .insert([{ name, description, parent_id: currentFolderId }])
+        .insert([{ 
+          name, 
+          description: description || null, 
+          parent_id: currentFolderId // This will be null if currentFolderId is null
+        }])
         .select()
         .single();
       
-      if (error) throw error;
+      if (error) {
+        console.error('Error creating folder:', error);
+        throw error;
+      }
+      
+      console.log('Folder created successfully:', data);
       return data;
     },
     onSuccess: () => {
@@ -152,14 +185,16 @@ const AdminFileExplorer = () => {
       toast.success('Folder created successfully');
     },
     onError: (error) => {
+      console.error('Create folder mutation error:', error);
       toast.error('Failed to create folder: ' + error.message);
     }
   });
 
-  // Updated upload mutation with better error handling
+  // Upload file mutation - fix UUID null handling
   const uploadFileMutation = useMutation({
     mutationFn: async (file: globalThis.File) => {
       console.log('Starting file upload:', file.name, 'Size:', file.size, 'Type:', file.type);
+      console.log('Current folder ID:', currentFolderId);
       
       const fileName = `${Date.now()}-${file.name}`;
       const filePath = currentFolderId ? `${currentFolderId}/${fileName}` : fileName;
@@ -179,16 +214,17 @@ const AdminFileExplorer = () => {
 
       console.log('File uploaded to storage:', uploadData);
 
-      // Create file record
+      // Create file record - properly handle null folder_id
       const { data, error } = await supabase
         .from('files')
         .insert([{
           name: file.name,
+          description: null,
           file_type: file.type.split('/')[0] || 'unknown',
           file_size: file.size,
           file_path: filePath,
-          folder_id: currentFolderId,
-          mime_type: file.type
+          folder_id: currentFolderId, // This will be null if currentFolderId is null
+          mime_type: file.type || null
         }])
         .select()
         .single();
@@ -217,7 +253,7 @@ const AdminFileExplorer = () => {
       const table = type === 'folder' ? 'folders' : 'files';
       const { error } = await supabase
         .from(table)
-        .update({ description })
+        .update({ description: description || null })
         .eq('id', id);
       
       if (error) throw error;
