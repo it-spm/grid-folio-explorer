@@ -53,6 +53,45 @@ interface FileData {
 const AdminFileExplorer = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  
+  // Initialize storage bucket on component mount
+  useEffect(() => {
+    const initializeStorage = async () => {
+      try {
+        // Check if bucket exists, if not create it
+        const { data: buckets, error: bucketsError } = await supabase.storage.listBuckets();
+        
+        if (bucketsError) {
+          console.error('Error checking buckets:', bucketsError);
+          return;
+        }
+
+        const bucketExists = buckets?.some(bucket => bucket.name === 'file-explorer');
+        
+        if (!bucketExists) {
+          const { error: createError } = await supabase.storage.createBucket('file-explorer', {
+            public: true,
+            allowedMimeTypes: ['image/*', 'video/*', 'audio/*', 'application/*', 'text/*'],
+            fileSizeLimit: 52428800 // 50MB
+          });
+
+          if (createError) {
+            console.error('Error creating bucket:', createError);
+            toast.error('Failed to initialize file storage');
+          } else {
+            console.log('Storage bucket created successfully');
+          }
+        }
+      } catch (error) {
+        console.error('Storage initialization error:', error);
+      }
+    };
+
+    if (user) {
+      initializeStorage();
+    }
+  }, [user]);
+
   const [currentFolderId, setCurrentFolderId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
@@ -117,18 +156,28 @@ const AdminFileExplorer = () => {
     }
   });
 
-  // Upload file mutation
+  // Updated upload mutation with better error handling
   const uploadFileMutation = useMutation({
     mutationFn: async (file: globalThis.File) => {
+      console.log('Starting file upload:', file.name, 'Size:', file.size, 'Type:', file.type);
+      
       const fileName = `${Date.now()}-${file.name}`;
       const filePath = currentFolderId ? `${currentFolderId}/${fileName}` : fileName;
 
       // Upload to storage
-      const { error: uploadError } = await supabase.storage
+      const { data: uploadData, error: uploadError } = await supabase.storage
         .from('file-explorer')
-        .upload(filePath, file);
+        .upload(filePath, file, {
+          cacheControl: '3600',
+          upsert: false
+        });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Storage upload error:', uploadError);
+        throw uploadError;
+      }
+
+      console.log('File uploaded to storage:', uploadData);
 
       // Create file record
       const { data, error } = await supabase
@@ -144,14 +193,20 @@ const AdminFileExplorer = () => {
         .select()
         .single();
 
-      if (error) throw error;
+      if (error) {
+        console.error('Database insert error:', error);
+        throw error;
+      }
+
+      console.log('File record created:', data);
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
-      toast.success('File uploaded successfully');
+      toast.success(`File "${data.name}" uploaded successfully`);
     },
     onError: (error) => {
+      console.error('Upload mutation error:', error);
       toast.error('Failed to upload file: ' + error.message);
     }
   });
@@ -191,7 +246,9 @@ const AdminFileExplorer = () => {
   };
 
   const handleFileUpload = (files: FileList) => {
-    Array.from(files).forEach(file => {
+    console.log('Handling file upload, file count:', files.length);
+    Array.from(files).forEach((file, index) => {
+      console.log(`Uploading file ${index + 1}:`, file.name);
       uploadFileMutation.mutate(file);
     });
   };
@@ -375,7 +432,12 @@ const AdminFileExplorer = () => {
                   type="file"
                   multiple
                   className="hidden"
-                  onChange={(e) => e.target.files && handleFileUpload(e.target.files)}
+                  onChange={(e) => {
+                    console.log('File input changed:', e.target.files?.length);
+                    if (e.target.files) {
+                      handleFileUpload(e.target.files);
+                    }
+                  }}
                 />
               </label>
             </div>
