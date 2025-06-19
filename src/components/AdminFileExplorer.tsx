@@ -21,7 +21,17 @@ import {
   Archive,
   Eye,
   Trash,
-  ArrowLeft
+  ArrowLeft,
+  Move,
+  Palette,
+  FolderOpen,
+  FolderArchive,
+  FolderCheck,
+  FolderClock,
+  FolderCode,
+  FolderHeart,
+  FolderKey,
+  FolderLock
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -29,6 +39,7 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import FilePreview from './FilePreview';
 
@@ -38,6 +49,7 @@ interface FolderData {
   description: string | null;
   parent_id: string | null;
   created_at: string;
+  icon?: string;
 }
 
 interface FileData {
@@ -51,6 +63,18 @@ interface FileData {
   mime_type: string | null;
   created_at: string;
 }
+
+const FOLDER_ICONS = [
+  { name: 'folder', icon: Folder, label: 'Default Folder' },
+  { name: 'folder-open', icon: FolderOpen, label: 'Open Folder' },
+  { name: 'folder-archive', icon: FolderArchive, label: 'Archive' },
+  { name: 'folder-check', icon: FolderCheck, label: 'Completed' },
+  { name: 'folder-clock', icon: FolderClock, label: 'Scheduled' },
+  { name: 'folder-code', icon: FolderCode, label: 'Code' },
+  { name: 'folder-heart', icon: FolderHeart, label: 'Favorites' },
+  { name: 'folder-key', icon: FolderKey, label: 'Private' },
+  { name: 'folder-lock', icon: FolderLock, label: 'Locked' },
+];
 
 const AdminFileExplorer = () => {
   const { user } = useAuth();
@@ -99,12 +123,14 @@ const AdminFileExplorer = () => {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [sortBy, setSortBy] = useState<'name' | 'date'>('name');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
-  const [editingItem, setEditingItem] = useState<{ type: 'folder' | 'file'; id: string; name: string; description: string } | null>(null);
+  const [editingItem, setEditingItem] = useState<{ type: 'folder' | 'file'; id: string; name: string; description: string; icon?: string } | null>(null);
   const [newFolderName, setNewFolderName] = useState('');
   const [newFolderDescription, setNewFolderDescription] = useState('');
+  const [newFolderIcon, setNewFolderIcon] = useState('folder');
   const [dragActive, setDragActive] = useState(false);
   const [previewFile, setPreviewFile] = useState<FileData | null>(null);
   const [folderPath, setFolderPath] = useState<FolderData[]>([]);
+  const [movingFile, setMovingFile] = useState<FileData | null>(null);
 
   // Build folder path for navigation
   useEffect(() => {
@@ -137,6 +163,20 @@ const AdminFileExplorer = () => {
 
     buildFolderPath();
   }, [currentFolderId]);
+
+  // Fetch all folders for move file dropdown
+  const { data: allFolders = [] } = useQuery({
+    queryKey: ['all-folders'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('folders')
+        .select('*')
+        .order('name');
+      
+      if (error) throw error;
+      return data as FolderData[];
+    }
+  });
 
   // Fetch folders - fix UUID null handling
   const { data: folders = [] } = useQuery({
@@ -190,17 +230,18 @@ const AdminFileExplorer = () => {
     }
   });
 
-  // Create folder mutation - fix UUID null handling
+  // Create folder mutation - updated to include icon
   const createFolderMutation = useMutation({
-    mutationFn: async ({ name, description }: { name: string; description: string }) => {
-      console.log('Creating folder:', name, 'with parent_id:', currentFolderId);
+    mutationFn: async ({ name, description, icon }: { name: string; description: string; icon: string }) => {
+      console.log('Creating folder:', name, 'with parent_id:', currentFolderId, 'icon:', icon);
       
       const { data, error } = await supabase
         .from('folders')
         .insert([{ 
           name, 
           description: description || null, 
-          parent_id: currentFolderId // This will be null if currentFolderId is null
+          parent_id: currentFolderId,
+          icon: icon || 'folder'
         }])
         .select()
         .single();
@@ -215,8 +256,10 @@ const AdminFileExplorer = () => {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['folders'] });
+      queryClient.invalidateQueries({ queryKey: ['all-folders'] });
       setNewFolderName('');
       setNewFolderDescription('');
+      setNewFolderIcon('folder');
       toast.success('Folder created successfully');
     },
     onError: (error) => {
@@ -279,6 +322,26 @@ const AdminFileExplorer = () => {
     onError: (error) => {
       console.error('Upload mutation error:', error);
       toast.error('Failed to upload file: ' + error.message);
+    }
+  });
+
+  // Move file mutation
+  const moveFileMutation = useMutation({
+    mutationFn: async ({ fileId, folderId }: { fileId: string; folderId: string | null }) => {
+      const { error } = await supabase
+        .from('files')
+        .update({ folder_id: folderId })
+        .eq('id', fileId);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      setMovingFile(null);
+      toast.success('File moved successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to move file: ' + error.message);
     }
   });
 
@@ -350,18 +413,24 @@ const AdminFileExplorer = () => {
     }
   });
 
-  // Edit folder mutation
+  // Edit folder mutation - updated to include icon
   const editFolderMutation = useMutation({
-    mutationFn: async ({ id, name, description }: { id: string; name: string; description: string }) => {
+    mutationFn: async ({ id, name, description, icon }: { id: string; name: string; description: string; icon?: string }) => {
+      const updateData: any = { name, description: description || null };
+      if (icon) {
+        updateData.icon = icon;
+      }
+      
       const { error } = await supabase
         .from('folders')
-        .update({ name, description: description || null })
+        .update(updateData)
         .eq('id', id);
       
       if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['folders'] });
+      queryClient.invalidateQueries({ queryKey: ['all-folders'] });
       setEditingItem(null);
       toast.success('Folder updated successfully');
     },
@@ -389,6 +458,12 @@ const AdminFileExplorer = () => {
       toast.error('Failed to update file: ' + error.message);
     }
   });
+
+  const getFolderIcon = (iconName?: string) => {
+    const iconConfig = FOLDER_ICONS.find(icon => icon.name === iconName) || FOLDER_ICONS[0];
+    const IconComponent = iconConfig.icon;
+    return <IconComponent className="w-12 h-12 text-blue-500" />;
+  };
 
   const getFileIcon = (mimeType: string | null, fileType: string) => {
     if (!mimeType) return <File className="w-12 h-12 text-gray-400" />;
@@ -612,8 +687,36 @@ const AdminFileExplorer = () => {
                         placeholder="Enter folder description"
                       />
                     </div>
+                    <div>
+                      <Label htmlFor="folder-icon">Icon</Label>
+                      <Select 
+                        value={newFolderIcon} 
+                        onValueChange={setNewFolderIcon}
+                      >
+                        <SelectTrigger>
+                          <SelectValue placeholder="Select an icon" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {FOLDER_ICONS.map((iconConfig) => {
+                            const IconComponent = iconConfig.icon;
+                            return (
+                              <SelectItem key={iconConfig.name} value={iconConfig.name}>
+                                <div className="flex items-center gap-2">
+                                  <IconComponent className="w-4 h-4" />
+                                  {iconConfig.label}
+                                </div>
+                              </SelectItem>
+                            );
+                          })}
+                        </SelectContent>
+                      </Select>
+                    </div>
                     <Button
-                      onClick={() => createFolderMutation.mutate({ name: newFolderName, description: newFolderDescription })}
+                      onClick={() => createFolderMutation.mutate({ 
+                        name: newFolderName, 
+                        description: newFolderDescription,
+                        icon: newFolderIcon 
+                      })}
                       disabled={!newFolderName || createFolderMutation.isPending}
                       className="w-full"
                     >
@@ -681,7 +784,9 @@ const AdminFileExplorer = () => {
             >
               <CardContent className="p-4">
                 <div className={viewMode === 'grid' ? "text-center" : "flex items-center gap-4"}>
-                  <Folder className={viewMode === 'grid' ? "w-12 h-12 text-blue-500 mx-auto mb-2" : "w-8 h-8 text-blue-500"} />
+                  <div className={viewMode === 'grid' ? "mb-2" : ""}>
+                    {getFolderIcon(folder.icon)}
+                  </div>
                   <div className={viewMode === 'grid' ? "" : "flex-1"}>
                     <h3 className="font-medium truncate">{folder.name}</h3>
                     {folder.description && (
@@ -695,7 +800,13 @@ const AdminFileExplorer = () => {
                         size="sm"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setEditingItem({ type: 'folder', id: folder.id, name: folder.name, description: folder.description || '' });
+                          setEditingItem({ 
+                            type: 'folder', 
+                            id: folder.id, 
+                            name: folder.name, 
+                            description: folder.description || '',
+                            icon: folder.icon || 'folder'
+                          });
                         }}
                       >
                         <Edit3 className="w-4 h-4" />
@@ -758,6 +869,13 @@ const AdminFileExplorer = () => {
                         <Button
                           variant="ghost"
                           size="sm"
+                          onClick={() => setMovingFile(file)}
+                        >
+                          <Move className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
                           onClick={() => setEditingItem({ type: 'file', id: file.id, name: file.name, description: file.description || '' })}
                         >
                           <Edit3 className="w-4 h-4" />
@@ -781,6 +899,51 @@ const AdminFileExplorer = () => {
             </Card>
           ))}
         </div>
+
+        {/* Move File Dialog */}
+        {movingFile && (
+          <Dialog open={!!movingFile} onOpenChange={() => setMovingFile(null)}>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Move File: {movingFile.name}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="destination-folder">Destination Folder</Label>
+                  <Select 
+                    onValueChange={(value) => {
+                      const folderId = value === 'root' ? null : value;
+                      moveFileMutation.mutate({ 
+                        fileId: movingFile.id, 
+                        folderId 
+                      });
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select destination folder" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="root">
+                        <div className="flex items-center gap-2">
+                          <Folder className="w-4 h-4" />
+                          Root Folder
+                        </div>
+                      </SelectItem>
+                      {allFolders.map((folder) => (
+                        <SelectItem key={folder.id} value={folder.id}>
+                          <div className="flex items-center gap-2">
+                            {getFolderIcon(folder.icon)}
+                            {folder.name}
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+            </DialogContent>
+          </Dialog>
+        )}
 
         {/* Edit Dialog */}
         {editingItem && (
@@ -808,13 +971,40 @@ const AdminFileExplorer = () => {
                     placeholder="Enter description"
                   />
                 </div>
+                {editingItem.type === 'folder' && (
+                  <div>
+                    <Label htmlFor="edit-icon">Icon</Label>
+                    <Select 
+                      value={editingItem.icon || 'folder'} 
+                      onValueChange={(value) => setEditingItem({ ...editingItem, icon: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select an icon" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {FOLDER_ICONS.map((iconConfig) => {
+                          const IconComponent = iconConfig.icon;
+                          return (
+                            <SelectItem key={iconConfig.name} value={iconConfig.name}>
+                              <div className="flex items-center gap-2">
+                                <IconComponent className="w-4 h-4" />
+                                {iconConfig.label}
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 <Button
                   onClick={() => {
                     if (editingItem.type === 'folder') {
                       editFolderMutation.mutate({
                         id: editingItem.id,
                         name: editingItem.name,
-                        description: editingItem.description
+                        description: editingItem.description,
+                        icon: editingItem.icon
                       });
                     } else {
                       editFileMutation.mutate({
