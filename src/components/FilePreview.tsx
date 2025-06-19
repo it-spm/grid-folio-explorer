@@ -1,4 +1,3 @@
-
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -110,7 +109,7 @@ const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
             src={fileUrl}
             alt={file.name}
             className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
-            style={{ imageRendering: 'high-quality' }}
+            style={{ imageRendering: 'smooth' }}
           />
         </div>
       );
