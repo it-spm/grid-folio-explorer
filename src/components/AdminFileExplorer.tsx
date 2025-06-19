@@ -548,6 +548,14 @@ const AdminFileExplorer = () => {
     );
   };
 
+  const handleFileClick = (file: FileData) => {
+    if (canPreview(file.mime_type)) {
+      setPreviewFile(file);
+    } else {
+      downloadFile(file);
+    }
+  };
+
   const filteredFolders = folders.filter(folder =>
     folder.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
     folder.description?.toLowerCase().includes(searchQuery.toLowerCase())
@@ -832,7 +840,11 @@ const AdminFileExplorer = () => {
 
           {/* Files */}
           {filteredFiles.map((file) => (
-            <Card key={file.id} className="hover:shadow-md transition-shadow">
+            <Card 
+              key={file.id} 
+              className="hover:shadow-md transition-shadow cursor-pointer"
+              onClick={() => handleFileClick(file)}
+            >
               <CardContent className="p-4">
                 <div className={viewMode === 'grid' ? "text-center" : "flex items-center gap-4"}>
                   <div className={viewMode === 'grid' ? "mb-2" : ""}>
@@ -852,7 +864,10 @@ const AdminFileExplorer = () => {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setPreviewFile(file)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPreviewFile(file);
+                        }}
                       >
                         <Eye className="w-4 h-4" />
                       </Button>
@@ -860,7 +875,10 @@ const AdminFileExplorer = () => {
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => downloadFile(file)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        downloadFile(file);
+                      }}
                     >
                       <Download className="w-4 h-4" />
                     </Button>
@@ -869,21 +887,28 @@ const AdminFileExplorer = () => {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setMovingFile(file)}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMovingFile(file);
+                          }}
                         >
                           <Move className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => setEditingItem({ type: 'file', id: file.id, name: file.name, description: file.description || '' })}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingItem({ type: 'file', id: file.id, name: file.name, description: file.description || '' });
+                          }}
                         >
                           <Edit3 className="w-4 h-4" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => {
+                          onClick={(e) => {
+                            e.stopPropagation();
                             if (confirm('Are you sure you want to delete this file?')) {
                               deleteFileMutation.mutate(file);
                             }
