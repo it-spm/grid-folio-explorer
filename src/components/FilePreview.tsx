@@ -109,7 +109,7 @@ const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
             src={fileUrl}
             alt={file.name}
             className="max-w-full max-h-[70vh] object-contain rounded-lg shadow-lg"
-            style={{ imageRendering: 'smooth' }}
+            style={{ imageRendering: 'auto' }}
           />
         </div>
       );
