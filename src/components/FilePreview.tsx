@@ -1,3 +1,4 @@
+
 import { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
@@ -19,8 +20,10 @@ interface FilePreviewProps {
 
 const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
   const [fileUrl, setFileUrl] = useState<string | null>(null);
+  const [blobUrl, setBlobUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [pdfLoadError, setPdfLoadError] = useState(false);
 
   // Auto-load preview when dialog opens
   useEffect(() => {
@@ -30,17 +33,42 @@ const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
     if (!isOpen) {
       // Clean up when dialog closes
       setFileUrl(null);
+      setBlobUrl(null);
       setError(null);
+      setPdfLoadError(false);
     }
   }, [isOpen, file]);
+
+  // Clean up blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (blobUrl) {
+        URL.revokeObjectURL(blobUrl);
+      }
+    };
+  }, [blobUrl]);
 
   const loadPreview = async () => {
     if (!file) return;
     
     setLoading(true);
     setError(null);
+    setPdfLoadError(false);
     
     try {
+      // For PDFs, we'll try to get the actual file data for better compatibility
+      if (file.mime_type === 'application/pdf') {
+        const { data: fileData, error: downloadError } = await supabase.storage
+          .from('file-explorer')
+          .download(file.file_path);
+
+        if (downloadError) throw downloadError;
+
+        const blobUrl = URL.createObjectURL(fileData);
+        setBlobUrl(blobUrl);
+      }
+
+      // Also get signed URL as fallback
       const { data, error } = await supabase.storage
         .from('file-explorer')
         .createSignedUrl(file.file_path, 3600); // 1 hour expiry
@@ -80,7 +108,10 @@ const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
   };
 
   const openInNewTab = () => {
-    if (fileUrl) {
+    if (blobUrl && file?.mime_type === 'application/pdf') {
+      // Use blob URL for PDFs to avoid CORS issues
+      window.open(blobUrl, '_blank');
+    } else if (fileUrl) {
       window.open(fileUrl, '_blank');
     }
   };
@@ -97,7 +128,7 @@ const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
         </div>
       );
     }
-    if (!fileUrl) return null;
+    if (!fileUrl && !blobUrl) return null;
 
     const mimeType = file.mime_type || '';
 
@@ -115,14 +146,62 @@ const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
       );
     }
 
-    // PDFs
+    // PDFs - Enhanced with better error handling
     if (mimeType === 'application/pdf') {
+      const pdfSrc = blobUrl || fileUrl;
+      
+      if (pdfLoadError) {
+        return (
+          <div className="text-center py-8">
+            <div className="bg-gradient-to-br from-red-50 to-orange-50 rounded-xl p-8 max-w-md mx-auto">
+              <div className="w-16 h-16 bg-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg className="w-8 h-8 text-white" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4z" clipRule="evenodd" />
+                </svg>
+              </div>
+              <p className="mb-4 text-gray-700 font-medium">
+                PDF preview blocked by browser security settings
+              </p>
+              <div className="space-y-3">
+                <Button
+                  onClick={openInNewTab}
+                  className="w-full bg-blue-600 hover:bg-blue-700"
+                >
+                  <ExternalLink className="w-4 h-4 mr-2" />
+                  Open in New Tab
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={downloadFile}
+                  className="w-full"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download PDF
+                </Button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="w-full h-[70vh] border border-border rounded-lg overflow-hidden">
           <iframe
-            src={fileUrl}
+            src={pdfSrc}
             className="w-full h-full"
             title={file.name}
+            onError={() => setPdfLoadError(true)}
+            onLoad={(e) => {
+              // Check if iframe loaded successfully
+              try {
+                const iframe = e.target as HTMLIFrameElement;
+                if (!iframe.contentDocument && !iframe.contentWindow) {
+                  setPdfLoadError(true);
+                }
+              } catch (error) {
+                setPdfLoadError(true);
+              }
+            }}
           />
         </div>
       );
@@ -192,7 +271,7 @@ const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
             </p>
             <div className="space-y-3">
               <Button
-                onClick={() => window.open(`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl)}`, '_blank')}
+                onClick={() => window.open(`https://view.officeapps.live.com/op/view.aspx?src=${encodeURIComponent(fileUrl!)}`, '_blank')}
                 className="w-full bg-blue-600 hover:bg-blue-700"
               >
                 <ExternalLink className="w-4 h-4 mr-2" />
@@ -200,7 +279,7 @@ const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
               </Button>
               <Button
                 variant="outline"
-                onClick={() => window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl)}`, '_blank')}
+                onClick={() => window.open(`https://docs.google.com/viewer?url=${encodeURIComponent(fileUrl!)}`, '_blank')}
                 className="w-full"
               >
                 <ExternalLink className="w-4 h-4 mr-2" />
@@ -252,7 +331,7 @@ const FilePreview = ({ file, isOpen, onClose }: FilePreviewProps) => {
         <DialogHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <DialogTitle className="truncate pr-8 text-lg font-semibold">{file?.name}</DialogTitle>
           <div className="flex gap-2 flex-shrink-0">
-            {fileUrl && !loading && (
+            {(fileUrl || blobUrl) && !loading && (
               <>
                 <Button variant="outline" size="sm" onClick={openInNewTab}>
                   <ExternalLink className="w-4 h-4" />
