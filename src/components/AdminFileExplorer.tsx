@@ -42,6 +42,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { toast } from 'sonner';
 import FilePreview from './FilePreview';
+import { sanitizeInput, validateFileName, validateFolderName, validateFileType, escapeHtml } from '@/lib/security';
 
 interface FolderData {
   id: string;
@@ -233,13 +234,22 @@ const AdminFileExplorer = () => {
   // Create folder mutation - updated to include icon
   const createFolderMutation = useMutation({
     mutationFn: async ({ name, description, icon }: { name: string; description: string; icon: string }) => {
-      console.log('Creating folder:', name, 'with parent_id:', currentFolderId, 'icon:', icon);
+      // Validate and sanitize inputs
+      const sanitizedName = sanitizeInput(name);
+      const sanitizedDescription = sanitizeInput(description);
+      
+      const nameValidation = validateFolderName(sanitizedName);
+      if (!nameValidation.isValid) {
+        throw new Error(nameValidation.error);
+      }
+      
+      console.log('Creating folder:', sanitizedName, 'with parent_id:', currentFolderId, 'icon:', icon);
       
       const { data, error } = await supabase
         .from('folders')
         .insert([{ 
-          name, 
-          description: description || null, 
+          name: sanitizedName, 
+          description: sanitizedDescription || null, 
           parent_id: currentFolderId,
           icon: icon || 'folder'
         }])
@@ -271,10 +281,22 @@ const AdminFileExplorer = () => {
   // Upload file mutation - fix UUID null handling
   const uploadFileMutation = useMutation({
     mutationFn: async (file: globalThis.File) => {
+      // Validate file before upload
+      const fileValidation = validateFileType(file);
+      if (!fileValidation.isValid) {
+        throw new Error(fileValidation.error);
+      }
+      
+      const nameValidation = validateFileName(file.name);
+      if (!nameValidation.isValid) {
+        throw new Error(nameValidation.error);
+      }
+      
       console.log('Starting file upload:', file.name, 'Size:', file.size, 'Type:', file.type);
       console.log('Current folder ID:', currentFolderId);
       
-      const fileName = `${Date.now()}-${file.name}`;
+      const sanitizedFileName = sanitizeInput(file.name);
+      const fileName = `${Date.now()}-${sanitizedFileName}`;
       const filePath = currentFolderId ? `${currentFolderId}/${fileName}` : fileName;
 
       // Upload to storage
@@ -296,7 +318,7 @@ const AdminFileExplorer = () => {
       const { data, error } = await supabase
         .from('files')
         .insert([{
-          name: file.name,
+          name: sanitizedFileName,
           description: null,
           file_type: file.type.split('/')[0] || 'unknown',
           file_size: file.size,
@@ -348,10 +370,11 @@ const AdminFileExplorer = () => {
   // Update description mutation
   const updateDescriptionMutation = useMutation({
     mutationFn: async ({ type, id, description }: { type: 'folder' | 'file'; id: string; description: string }) => {
+      const sanitizedDescription = sanitizeInput(description);
       const table = type === 'folder' ? 'folders' : 'files';
       const { error } = await supabase
         .from(table)
-        .update({ description: description || null })
+        .update({ description: sanitizedDescription || null })
         .eq('id', id);
       
       if (error) throw error;
@@ -416,7 +439,16 @@ const AdminFileExplorer = () => {
   // Edit folder mutation - updated to include icon
   const editFolderMutation = useMutation({
     mutationFn: async ({ id, name, description, icon }: { id: string; name: string; description: string; icon?: string }) => {
-      const updateData: any = { name, description: description || null };
+      // Validate and sanitize inputs
+      const sanitizedName = sanitizeInput(name);
+      const sanitizedDescription = sanitizeInput(description);
+      
+      const nameValidation = validateFolderName(sanitizedName);
+      if (!nameValidation.isValid) {
+        throw new Error(nameValidation.error);
+      }
+      
+      const updateData: any = { name: sanitizedName, description: sanitizedDescription || null };
       if (icon) {
         updateData.icon = icon;
       }
@@ -442,9 +474,18 @@ const AdminFileExplorer = () => {
   // Edit file mutation
   const editFileMutation = useMutation({
     mutationFn: async ({ id, name, description }: { id: string; name: string; description: string }) => {
+      // Validate and sanitize inputs
+      const sanitizedName = sanitizeInput(name);
+      const sanitizedDescription = sanitizeInput(description);
+      
+      const nameValidation = validateFileName(sanitizedName);
+      if (!nameValidation.isValid) {
+        throw new Error(nameValidation.error);
+      }
+      
       const { error } = await supabase
         .from('files')
-        .update({ name, description: description || null })
+        .update({ name: sanitizedName, description: sanitizedDescription || null })
         .eq('id', id);
       
       if (error) throw error;

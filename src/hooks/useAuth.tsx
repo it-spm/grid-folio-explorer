@@ -1,57 +1,89 @@
 
 import { useState, useEffect, createContext, useContext } from 'react';
 import { supabase } from '@/integrations/supabase/client';
-
-interface AuthUser {
-  id: string;
-  email: string;
-}
+import { User, Session } from '@supabase/supabase-js';
 
 interface AuthContextType {
-  user: AuthUser | null;
+  user: User | null;
+  session: Session | null;
   login: (email: string, password: string) => Promise<{ error?: string }>;
-  logout: () => void;
+  signup: (email: string, password: string) => Promise<{ error?: string }>;
+  logout: () => Promise<void>;
   isLoading: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
-  const [user, setUser] = useState<AuthUser | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [session, setSession] = useState<Session | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // For this demo, we'll check if there's a stored admin session
-    const storedUser = localStorage.getItem('adminUser');
-    if (storedUser) {
-      setUser(JSON.parse(storedUser));
-    }
-    setIsLoading(false);
+    // Set up auth state listener FIRST
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setIsLoading(false);
+      }
+    );
+
+    // THEN check for existing session
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setIsLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
 
   const login = async (email: string, password: string) => {
     try {
-      // Simple authentication check - in a real app, this would be more secure
-      if (email === 'admin@example.com' && password === 'admin123') {
-        const adminUser = { id: '1', email: 'admin@example.com' };
-        setUser(adminUser);
-        localStorage.setItem('adminUser', JSON.stringify(adminUser));
-        return {};
-      } else {
-        return { error: 'Invalid email or password' };
+      const { error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+      
+      if (error) {
+        return { error: error.message };
       }
+      
+      return {};
     } catch (error) {
       return { error: 'Login failed' };
     }
   };
 
-  const logout = () => {
-    setUser(null);
-    localStorage.removeItem('adminUser');
+  const signup = async (email: string, password: string) => {
+    try {
+      const redirectUrl = `${window.location.origin}/`;
+      
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          emailRedirectTo: redirectUrl
+        }
+      });
+      
+      if (error) {
+        return { error: error.message };
+      }
+      
+      return {};
+    } catch (error) {
+      return { error: 'Signup failed' };
+    }
+  };
+
+  const logout = async () => {
+    await supabase.auth.signOut();
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, logout, isLoading }}>
+    <AuthContext.Provider value={{ user, session, login, signup, logout, isLoading }}>
       {children}
     </AuthContext.Provider>
   );
