@@ -25,7 +25,10 @@ const Index = () => {
       <div className="border-b bg-card">
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-bold">Internal File Explorer</h1>
+            <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
+              <span className="text-primary-foreground font-bold text-sm">AC</span>
+            </div>
+            <h1 className="text-xl font-bold">Acme Corp</h1>
             {user && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Shield className="w-4 h-4" />
@@ -59,7 +62,7 @@ const Index = () => {
       
       {/* Login overlay for visitors who want to become admin */}
       {!user && (
-        <div className="fixed bottom-6 right-6">
+        <div className="fixed bottom-6 right-6 z-50">
           <AdminLogin />
         </div>
       )}

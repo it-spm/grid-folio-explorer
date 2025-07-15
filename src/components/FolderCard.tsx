@@ -1,6 +1,7 @@
 
 import { Folder, FolderOpen } from 'lucide-react';
 import { useState } from 'react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 
 interface FolderCardProps {
   name: string;
@@ -13,12 +14,15 @@ const FolderCard = ({ name, description, itemCount, onDoubleClick }: FolderCardP
   const [isHovered, setIsHovered] = useState(false);
 
   return (
-    <div
-      className="bg-card border border-border rounded-lg p-4 hover:shadow-lg transition-all duration-200 cursor-pointer group"
-      onMouseEnter={() => setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}
-      onDoubleClick={onDoubleClick}
-    >
+    <TooltipProvider>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <div
+            className="bg-card border border-border rounded-lg p-4 hover:shadow-lg transition-all duration-200 cursor-pointer group"
+            onMouseEnter={() => setIsHovered(true)}
+            onMouseLeave={() => setIsHovered(false)}
+            onDoubleClick={onDoubleClick}
+          >
       <div className="flex flex-col items-center text-center space-y-3">
         <div className="text-primary transition-transform duration-200 group-hover:scale-110">
           {isHovered ? (
@@ -42,7 +46,14 @@ const FolderCard = ({ name, description, itemCount, onDoubleClick }: FolderCardP
           )}
         </div>
       </div>
-    </div>
+          </div>
+        </TooltipTrigger>
+        <TooltipContent>
+          <p>{name}</p>
+          {description && <p className="text-xs opacity-75">{description}</p>}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 };
 
