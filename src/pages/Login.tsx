@@ -19,6 +19,8 @@ const Login = () => {
     setIsLoading(true);
 
     try {
+      console.log('Login attempt:', { username });
+      
       // Get user from database
       const { data: user, error } = await supabase
         .from('admin_users')
@@ -26,14 +28,24 @@ const Login = () => {
         .eq('username', username)
         .single();
 
+      console.log('Database query result:', { user, error });
+
       if (error || !user) {
+        console.log('User not found or database error:', error);
         toast.error('Invalid username or password');
         setIsLoading(false);
         return;
       }
 
+      console.log('User found, comparing passwords...', { 
+        inputPassword: password, 
+        storedHash: user.password_hash 
+      });
+
       // Verify password
       const isValid = await bcrypt.compare(password, user.password_hash);
+      
+      console.log('Password comparison result:', isValid);
       
       if (!isValid) {
         toast.error('Invalid username or password');
@@ -46,6 +58,7 @@ const Login = () => {
       toast.success('Login successful!');
       navigate('/');
     } catch (error) {
+      console.error('Login error:', error);
       toast.error('Login failed');
     }
     
