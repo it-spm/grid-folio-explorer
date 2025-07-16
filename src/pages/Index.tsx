@@ -1,9 +1,9 @@
 
 import { useAuth } from "@/hooks/useAuth";
 import AdminFileExplorer from "@/components/AdminFileExplorer";
-import AdminLogin from "@/components/AdminLogin";
 import { Button } from "@/components/ui/button";
-import { LogOut, Shield } from "lucide-react";
+import { LogOut, Shield, LogIn } from "lucide-react";
+import { Link } from "react-router-dom";
 
 const Index = () => {
   const { user, logout, isLoading } = useAuth();
@@ -26,9 +26,9 @@ const Index = () => {
         <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
-              <span className="text-primary-foreground font-bold text-sm">AC</span>
+              <span className="text-primary-foreground font-bold text-sm">SPM</span>
             </div>
-            <h1 className="text-xl font-bold">Acme Corp</h1>
+            <h1 className="text-xl font-bold">Suparma</h1>
             {user && (
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                 <Shield className="w-4 h-4" />
@@ -41,7 +41,7 @@ const Index = () => {
             {user ? (
               <div className="flex items-center gap-4">
                 <span className="text-sm text-muted-foreground">
-                  Logged in as: {user.email}
+                  Logged in as: {user.username}
                 </span>
                 <Button variant="outline" size="sm" onClick={logout}>
                   <LogOut className="w-4 h-4 mr-2" />
@@ -49,8 +49,16 @@ const Index = () => {
                 </Button>
               </div>
             ) : (
-              <div className="text-sm text-muted-foreground">
-                Visitor Mode - Browse and download only
+              <div className="flex items-center gap-4">
+                <span className="text-sm text-muted-foreground">
+                  Visitor Mode - Browse and download only
+                </span>
+                <Link to="/login">
+                  <Button variant="outline" size="sm">
+                    <LogIn className="w-4 h-4 mr-2" />
+                    Admin Login
+                  </Button>
+                </Link>
               </div>
             )}
           </div>
@@ -58,14 +66,7 @@ const Index = () => {
       </div>
 
       {/* Main content */}
-      {user ? <AdminFileExplorer /> : <AdminFileExplorer />}
-      
-      {/* Login overlay for visitors who want to become admin */}
-      {!user && (
-        <div className="fixed bottom-6 right-6 z-50">
-          <AdminLogin />
-        </div>
-      )}
+      <AdminFileExplorer />
     </div>
   );
 };
