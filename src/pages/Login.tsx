@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
-import bcrypt from 'bcryptjs';
+
 
 const Login = () => {
   const [username, setUsername] = useState('');
@@ -39,11 +39,11 @@ const Login = () => {
 
       console.log('User found, comparing passwords...', { 
         inputPassword: password, 
-        storedHash: user.password_hash 
+        storedPassword: user.password_hash 
       });
 
-      // Verify password
-      const isValid = await bcrypt.compare(password, user.password_hash);
+      // Verify password (plain text comparison)
+      const isValid = password === user.password_hash;
       
       console.log('Password comparison result:', isValid);
       
